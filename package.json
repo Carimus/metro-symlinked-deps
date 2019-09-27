@@ -1,0 +1,87 @@
+{
+    "name": "@carimus/metro-symlinked-deps",
+    "version": "0.0.0-development",
+    "description": "Metro bundler configuration utilities to workaround a lack of symlink support.",
+    "license": "MIT",
+    "main": "index.js",
+    "scripts": {
+        "test": "jest --passWithNoTests",
+        "test:watch": "yarn run test --watch",
+        "lint": "eslint '{*,{src,docs}/**/*,__{tests,mocks,support}__/**/*}.{js,jsx}' || true",
+        "pretty": "prettier --write '{*,{src,docs,.github}/**/*,__{tests,mocks,support}__/**/*}.{json,md,yml,js,jsx}'",
+        "fixcode": "yarn run pretty",
+        "semantic-release": "semantic-release",
+        "release": "yarn run semantic-release",
+        "release-ci": "echo 'unsafe-perm = true' > ./.npmrc && yarn run semantic-release && rm -rf ./.npmrc",
+        "commit": "git-cz"
+    },
+    "bugs": {
+        "url": "https://github.com/Carimus/metro-symlinked-deps/issues"
+    },
+    "repository": "https://github.com/Carimus/metro-symlinked-deps",
+    "homepage": "https://github.com/Carimus/metro-symlinked-deps#readme",
+    "private": false,
+    "keywords": [
+        "metro",
+        "react-native",
+        "jest-haste-map"
+    ],
+    "husky": {
+        "hooks": {
+            "commit-msg": "commitlint -E HUSKY_GIT_PARAMS",
+            "pre-commit": "lint-staged"
+        }
+    },
+    "lint-staged": {
+        "{*,{src,docs}/**/*,__{tests,mocks,support}__/**/*}.{js,jsx}": [
+            "prettier --write",
+            "eslint",
+            "git add"
+        ],
+        "{*,{src,docs,.github}/**/*,__{tests,mocks,support}__/**/*}.{json,md,yml}": [
+            "prettier --write",
+            "git add"
+        ]
+    },
+    "config": {
+        "commitizen": {
+            "path": "./node_modules/cz-conventional-changelog"
+        }
+    },
+    "commitlint": {
+        "extends": [
+            "@commitlint/config-conventional"
+        ]
+    },
+    "devDependencies": {
+        "@commitlint/cli": "^8.2.0",
+        "@commitlint/config-conventional": "^8.2.0",
+        "babel-eslint": "^10.0.3",
+        "commitizen": "^4.0.3",
+        "cz-conventional-changelog": "^3.0.2",
+        "eslint": "^6.4.0",
+        "eslint-config-prettier": "^6.3.0",
+        "eslint-config-standard": "^14.1.0",
+        "eslint-plugin-babel": "^5.3.0",
+        "eslint-plugin-import": "^2.18.2",
+        "eslint-plugin-jest": "^22.17.0",
+        "eslint-plugin-node": "^10.0.0",
+        "eslint-plugin-promise": "^4.2.1",
+        "eslint-plugin-standard": "^4.0.1",
+        "husky": "^3.0.5",
+        "jest": "^24.9.0",
+        "lint-staged": "^9.3.0",
+        "prettier": "^1.18.2",
+        "semantic-release": "^15.13.24"
+    },
+    "dependencies": {
+        "chalk": "^2.4.2",
+        "escape-string-regexp": "^2.0.0",
+        "get-dev-paths": "^0.1.1",
+        "metro-config": "^0.56.0"
+    },
+    "peerDependencies": {},
+    "engines": {
+        "node": ">=8"
+    }
+}

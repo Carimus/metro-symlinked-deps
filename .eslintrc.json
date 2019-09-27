@@ -1,0 +1,43 @@
+{
+    "env": {
+        "jest/globals": true
+    },
+    "extends": [
+        "eslint:recommended",
+        "standard",
+        "prettier",
+        "prettier/standard"
+    ],
+    "parser": "babel-eslint",
+    "parserOptions": {
+        "ecmaFeatures": {
+            "experimentalObjectRestSpread": true,
+            "jsx": false,
+            "modules": false
+        },
+        "ecmaVersion": 7,
+        "sourceType": "script"
+    },
+    "plugins": ["babel", "jest"],
+    "rules": {
+        "arrow-parens": ["error", "always"],
+        "camelcase": "error",
+        "curly": ["error", "all"],
+        "jest/no-disabled-tests": "warn",
+        "jest/no-focused-tests": "warn",
+        "jest/no-identical-title": "warn",
+        "jest/valid-expect": "warn",
+        "max-len": [
+            "error",
+            {
+                "code": 140,
+                "ignoreUrls": true
+            }
+        ],
+        "multiline-comment-style": ["error", "starred-block"],
+        "no-confusing-arrow": "error",
+        "no-console": "error",
+        "no-undefined": "error",
+        "no-var": "error"
+    }
+}
