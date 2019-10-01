@@ -2,11 +2,13 @@
 
 const path = require('path');
 const fs = require('fs');
+const util = require('util');
 const getDevPaths = require('get-dev-paths');
 const { mergeConfig: metroMergeConfig } = require('metro-config');
 const generateMetroConfigBlacklistRE = require('metro-config/src/defaults/blacklist');
 const escapeForRegExp = require('escape-string-regexp');
 const chalk = require('chalk');
+const { has } = require('ramda');
 
 /**
  * Wraps metro-config's mergeConfig function in order to remove the `symbolicator` field that's
@@ -159,6 +161,45 @@ function generateLinkedDependenciesResolverConfig(
 }
 
 /**
+ * Generate a resolver config that will resolve all node modules from the root of the project.
+ *
+ * @param {string} projectRoot
+ * @param {object|null} existingProjectConfig
+ * @return {{extraNodeModules: object}}
+ */
+function generateRootNodeModulesResolverConfig(
+    projectRoot,
+    existingProjectConfig = null,
+) {
+    // If the existing config has an `extraNodeModules` config option already set, that will get priority in resolution
+    const extraNodeModules =
+        existingProjectConfig &&
+        existingProjectConfig.resolver &&
+        existingProjectConfig.resolver.extraNodeModules
+            ? existingProjectConfig.resolver.extraNodeModules
+            : {};
+
+    return {
+        extraNodeModules: new Proxy(extraNodeModules, {
+            get: (target, name) => {
+                if (name === util.inspect.custom) {
+                    return () => {
+                        return (
+                            chalk.cyan('RootNodeModulesProxy<') +
+                            util.inspect(extraNodeModules) +
+                            chalk.cyan('>')
+                        );
+                    };
+                }
+                return typeof name === 'symbol' || has(name, target)
+                    ? target[name]
+                    : path.join(projectRoot, `node_modules/${name}`);
+            },
+        }),
+    };
+}
+
+/**
  * Generate a list of watchFolders based on linked dependencies found, additional watch folders passed in as an option,
  * and addition watch folders detected in the existing config.
  *
@@ -223,7 +264,9 @@ function warnDeveloper(resolvedDevPaths = [], blacklistLinkedModules = []) {
  * @param {boolean=} resolveBlacklistDirectoriesSymlinks
  * @param {string[]=} additionalWatchFolders
  * @param {boolean=} resolveAdditionalWatchFoldersSymlinks
+ * @param {boolean=} resolveNodeModulesAtRoot
  * @param {boolean=} silent
+ * @param {boolean=} debug
  * @return {object}
  */
 function applyConfigForLinkedDependencies(
@@ -235,7 +278,9 @@ function applyConfigForLinkedDependencies(
         resolveBlacklistDirectoriesSymlinks = true,
         additionalWatchFolders = [],
         resolveAdditionalWatchFoldersSymlinks = true,
+        resolveNodeModulesAtRoot = false,
         silent = false,
+        debug = false,
     } = {},
 ) {
     const realProjectRoot = path.resolve(projectRoot || inferProjectRoot());
@@ -257,7 +302,7 @@ function applyConfigForLinkedDependencies(
         throw new Error(
             'Refusing to override project-config-specified resolver.blacklistRE config value. ' +
                 'Use the `resolveDevPaths`, `generateLinkedDependenciesWatchFolders` and ' +
-                '`generateLinkedDependenciesResolverConfig` functions directly instead of' +
+                '`generateLinkedDependenciesResolverConfig` functions directly instead of ' +
                 '`applyConfigForLinkedDependencies` OR remove your specified  resolver.blacklistRE value ' +
                 "since we can't intelligently merge regular expressions.",
         );
@@ -272,16 +317,24 @@ function applyConfigForLinkedDependencies(
     }
 
     // Generate the metro config based on the options passed in
-    return mergeConfig(projectConfig, {
-        resolver: generateLinkedDependenciesResolverConfig(
-            resolvedDevPaths,
-            blacklistLinkedModules,
-            resolvePaths(
-                realProjectRoot,
-                blacklistDirectories,
-                resolveBlacklistDirectoriesSymlinks,
+    const mergedConfig = mergeConfig(projectConfig, {
+        resolver: {
+            ...generateLinkedDependenciesResolverConfig(
+                resolvedDevPaths,
+                blacklistLinkedModules,
+                resolvePaths(
+                    realProjectRoot,
+                    blacklistDirectories,
+                    resolveBlacklistDirectoriesSymlinks,
+                ),
             ),
-        ),
+            ...(resolveNodeModulesAtRoot
+                ? generateRootNodeModulesResolverConfig(
+                      realProjectRoot,
+                      projectConfig,
+                  )
+                : {}),
+        },
         watchFolders: generateLinkedDependenciesWatchFolders(
             resolvedDevPaths,
             resolvePaths(
@@ -292,6 +345,12 @@ function applyConfigForLinkedDependencies(
             projectConfig,
         ),
     });
+
+    if (debug) {
+        console.log('Final metro configuration:\n\n%O\n', mergedConfig);
+    }
+
+    return mergedConfig;
 }
 
 module.exports = {

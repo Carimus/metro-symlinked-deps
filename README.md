@@ -70,8 +70,14 @@ the list, you can safely use the single `applyConfigForLinkedDependencies` funct
     directly into the `watchFolders` option.
 -   `resolveAdditionalWatchFoldersSymlinks` (`boolean`, defaults to `true`): whether or not to resolve symlinks when
     processing `additionalWatchFolders`.
+-   `resolveNodeModulesAtRoot` (`boolean`, defaults to `false`): Set this to `true` to set up a Proxy for
+    `resolver.extraNodeModules` in order to ensure that all modules (even the ones required by linked dependencies or
+    any other out-of-root watch folders) will resolve to the project root's `node_modules` directory. This is primarily
+    useful if the linked dependencies rely on the presence of peerDependencies installed in the project root.
 -   `silent` (`boolean`, defaults to `false`): Set this to `true` to suppress warning output in the bundler that shows
     up when linked dependencies are detected.
+-   `debug` (`boolean`, defaults to `false`): Set this to `true` to log out valuable debug information like the final
+    merged metro configuration.
 
 #### Example
 
@@ -161,3 +167,12 @@ legitimately identical. There's unfortunately no way to tell `metro` this is the
 example, prefer the version of the code in the root project's `node_modules` so instead we have to manually construct
 a blacklist of the in-common packages in the linked dependency, construct a regular expression from that, and
 hand that regular expression to the `blacklistRE` option of the metro bundler's `resolver` config.
+
+## TODO
+
+-   [ ] Remove `resolveNodeModulesAtRoot` and replace with `nodeModulesResolutionStrategy` with three options:
+    -   `null`: default, don't apply any `extraNodeModules` config
+    -   `'peers'`: apply `extraNodeModules` that will automatically detect peer dependencies in linked deps and ensure
+        those are resolved in the project root while allowing all other dependencies to resolve naturally.
+    -   `'root'`: apply `extraNodeModules` that will force all node modules to resolve in the project root, equivelant
+        to `resolveNodeModulesAtRoot` being set to `true` currently.
