@@ -62,8 +62,14 @@ the list, you can safely use the single `applyConfigForLinkedDependencies` funct
     any linked dependencies' `node_modules`. If you get naming collisions for certain modules, add those modules
     by name here and restart the bundler using `--reset-cache`. A common one is `react-native` which will typically
     show up as a dev dependency in react native packages since it's used in tests.
+-   `blacklistDirectories` (`string[]`, defaults to `[]`): a list of absolute or relative (to `projectRoot`) directories
+    that should be blacklisted in addition to the directories determined via `blacklistLinkedModules`.
+-   `resolveBlacklistDirectoriesSymlinks` (`boolean`, defaults to `true`): whether or not to resolve symlinks when
+    processing `blacklistDirectories`.
 -   `additionalWatchFolders` (`string[]`, defaults to `[]`): a list of additional absolute paths to watch, merged
     directly into the `watchFolders` option.
+-   `resolveAdditionalWatchFoldersSymlinks` (`boolean`, defaults to `true`): whether or not to resolve symlinks when
+    processing `additionalWatchFolders`.
 -   `silent` (`boolean`, defaults to `false`): Set this to `true` to suppress warning output in the bundler that shows
     up when linked dependencies are detected.
 

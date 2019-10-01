@@ -18,7 +18,7 @@ const chalk = require('chalk');
  * @see https://github.com/facebook/metro/issues/452
  *
  * @param args All args are simply forwarded to `metro-config`'s `mergeConfig`.
- * @return {{symbolicator}|*}
+ * @return {object}
  */
 function mergeConfig(...args) {
     const mergedConfig = metroMergeConfig(...args);
@@ -45,6 +45,20 @@ function inferProjectRoot() {
 }
 
 /**
+ * Resolve a list of directories relative to the root of the project (if they're not already absolute paths).
+ *
+ * @param {string} projectRoot
+ * @param {string[]} paths
+ * @param {boolean} resolveSymlinks
+ */
+function resolvePaths(projectRoot, paths, resolveSymlinks = true) {
+    return paths.map((possibleRelativePath) => {
+        const absolutePath = path.resolve(projectRoot, possibleRelativePath);
+        return resolveSymlinks ? fs.realpathSync(absolutePath) : absolutePath;
+    });
+}
+
+/**
  * Resolve all detected linked directories to unique absolute paths without a trailing slash.
  *
  * @param {string} projectRoot
@@ -68,14 +82,23 @@ function resolveDevPaths(projectRoot) {
  *
  * Returns null if there are no `resolvedDevPaths` or `blacklistLinkedModules`
  *
- * @param resolvedDevPaths
- * @param blacklistLinkedModules
- * @return {null|RegExp}
+ * @param {string[]=} resolvedDevPaths A list of resolved, real, absolute paths to the dependencies that are linked
+ *      in node_modules.
+ * @param {string[]=} blacklistLinkedModules A list of node_modules to blacklist within linked deps.
+ * @param {string[]=} resolvedBlacklistDirectories Additional directories to blacklist (already resolved to absolute
+ *      paths)
+ * @return {null|RegExp} A regular expression that will match all ignored directories and all of their contents.
+ *      Ignored directories will be the blacklisted modules within node_modules/ within each linked dependency as well
+ *      as any explicitly defined via `resolvedBlacklistDirectories`. Will return null if there's no directories
+ *      to ignore.
  */
 function generateBlacklistGroupForLinkedModules(
     resolvedDevPaths = [],
     blacklistLinkedModules = [],
+    resolvedBlacklistDirectories = [],
 ) {
+    const ignoreDirPatterns = [];
+
     if (resolvedDevPaths.length > 0 && blacklistLinkedModules.length > 0) {
         const escapedJoinedDevPaths = resolvedDevPaths
             .map(escapeForRegExp)
@@ -85,9 +108,20 @@ function generateBlacklistGroupForLinkedModules(
             .join('|');
         const devPathsMatchingGroup = `(${escapedJoinedDevPaths})`;
         const modulesMatchingGroup = `(${escapedJoinedModules})`;
-        return new RegExp(
-            `(${devPathsMatchingGroup}\\/node_modules\\/${modulesMatchingGroup}(/.*|))`,
+        ignoreDirPatterns.push(
+            `${devPathsMatchingGroup}\\/node_modules\\/${modulesMatchingGroup}`,
         );
+    }
+
+    if (resolvedBlacklistDirectories.length > 0) {
+        ignoreDirPatterns.push(
+            ...resolvedBlacklistDirectories.map(escapeForRegExp),
+        );
+    }
+
+    if (ignoreDirPatterns.length > 0) {
+        const ignoreDirsGroup = `(${ignoreDirPatterns.join('|')})`;
+        return new RegExp(`(${ignoreDirsGroup}(/.*|))`);
     }
 
     return null;
@@ -95,19 +129,24 @@ function generateBlacklistGroupForLinkedModules(
 
 /**
  * Generate a resolver config containing the `blacklistRE` option if there are linked dep node_modules that need
- * to be blacklisted.
+ * to be blacklisted as well as any directories that were explicitly blacklisted via config.
  *
- * @param {string[]=} resolvedDevPaths
- * @param {string[]=} blacklistLinkedModules
+ * @param {string[]=} resolvedDevPaths A list of resolved, real, absolute paths to the dependencies that are linked
+ *      in node_modules.
+ * @param {string[]=} blacklistLinkedModules A list of node_modules to blacklist within linked deps.
+ * @param {string[]=} resolvedBlacklistDirectories Additional directories to blacklist (already resolved to absolute
+ *      paths)
  * @return {{}|{blacklistRE: RegExp}}
  */
 function generateLinkedDependenciesResolverConfig(
     resolvedDevPaths = [],
     blacklistLinkedModules = [],
+    resolvedBlacklistDirectories = [],
 ) {
     const blacklistGroup = generateBlacklistGroupForLinkedModules(
         resolvedDevPaths,
         blacklistLinkedModules,
+        resolvedBlacklistDirectories,
     );
 
     if (blacklistGroup) {
@@ -123,19 +162,21 @@ function generateLinkedDependenciesResolverConfig(
  * Generate a list of watchFolders based on linked dependencies found, additional watch folders passed in as an option,
  * and addition watch folders detected in the existing config.
  *
- * @param {string[]} resolvedDevPaths
- * @param {string[]} additionalWatchFolders
+ * @param {string[]} resolvedDevPaths A list of resolved, real, absolute paths to the dependencies that are linked
+ *      in node_modules.
+ * @param {string[]} resolvedAdditionalWatchFolders A list of additional directories to watch (already resolved to real
+ *      absolute paths).
  * @param {{watchFolders: string[]}|null} existingProjectConfig
  * @return {string[]}
  */
 function generateLinkedDependenciesWatchFolders(
     resolvedDevPaths = [],
-    additionalWatchFolders = [],
+    resolvedAdditionalWatchFolders = [],
     existingProjectConfig = null,
 ) {
     return [
         ...resolvedDevPaths,
-        ...additionalWatchFolders,
+        ...resolvedAdditionalWatchFolders,
         ...((existingProjectConfig && existingProjectConfig.watchFolders) ||
             []),
     ];
@@ -144,7 +185,8 @@ function generateLinkedDependenciesWatchFolders(
 /**
  * Warn the developer about the presence of symlinked dependencies.
  *
- * @param {string[]} resolvedDevPaths
+ * @param {string[]} resolvedDevPaths A list of resolved, real, absolute paths to the dependencies that are linked
+ *      in node_modules.
  * @param {string[]} blacklistLinkedModules
  */
 function warnDeveloper(resolvedDevPaths = [], blacklistLinkedModules = []) {
@@ -171,12 +213,28 @@ function warnDeveloper(resolvedDevPaths = [], blacklistLinkedModules = []) {
     }
 }
 
+/**
+ * Transform a metro configuration object to allow it to support symlinked node_modules.
+ *
+ * @param {object=} projectConfig
+ * @param {string|null=} projectRoot
+ * @param {string[]} blacklistLinkedModules
+ * @param {string[]} blacklistDirectories
+ * @param {boolean=} resolveBlacklistDirectoriesSymlinks
+ * @param {string[]=} additionalWatchFolders
+ * @param {boolean=} resolveAdditionalWatchFoldersSymlinks
+ * @param {boolean=} silent
+ * @return {object}
+ */
 function applyConfigForLinkedDependencies(
     projectConfig = {},
     {
         projectRoot = null,
         blacklistLinkedModules = [],
+        blacklistDirectories = [],
+        resolveBlacklistDirectoriesSymlinks = true,
         additionalWatchFolders = [],
+        resolveAdditionalWatchFoldersSymlinks = true,
         silent = false,
     } = {},
 ) {
@@ -208,26 +266,32 @@ function applyConfigForLinkedDependencies(
     // Resolve all of the linked dependencies and only continue to modify config if there are any.
     const resolvedDevPaths = resolveDevPaths(realProjectRoot);
 
-    if (resolvedDevPaths.length > 0) {
-        if (!silent) {
-            // Warn the user about the fact that the workaround is in effect.
-            warnDeveloper(resolvedDevPaths, blacklistLinkedModules);
-        }
-
-        return mergeConfig(projectConfig, {
-            resolver: generateLinkedDependenciesResolverConfig(
-                resolvedDevPaths,
-                blacklistLinkedModules,
-            ),
-            watchFolders: generateLinkedDependenciesWatchFolders(
-                resolvedDevPaths,
-                additionalWatchFolders,
-                projectConfig,
-            ),
-        });
+    if (resolvedDevPaths.length > 0 && !silent) {
+        // Warn the user about the fact that the workaround is in effect.
+        warnDeveloper(resolvedDevPaths, blacklistLinkedModules);
     }
 
-    return projectConfig;
+    // Generate the metro config based on the options passed in
+    return mergeConfig(projectConfig, {
+        resolver: generateLinkedDependenciesResolverConfig(
+            resolvedDevPaths,
+            blacklistLinkedModules,
+            resolvePaths(
+                realProjectRoot,
+                blacklistDirectories,
+                resolveBlacklistDirectoriesSymlinks,
+            ),
+        ),
+        watchFolders: generateLinkedDependenciesWatchFolders(
+            resolvedDevPaths,
+            resolvePaths(
+                realProjectRoot,
+                additionalWatchFolders,
+                resolveAdditionalWatchFoldersSymlinks,
+            ),
+            projectConfig,
+        ),
+    });
 }
 
 module.exports = {
